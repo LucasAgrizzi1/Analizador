@@ -1,0 +1,107 @@
+import os
+from azure.core.credentials import AzureKeyCredential
+from azure.ai.documentintelligence import DocumentIntelligenceClient
+from azure.ai.documentintelligence.models import AnalyzeDocumentRequest
+
+# Chave do seu recurso Azure AI Document Intelligence
+endpoint = "SEU_ENDPOINT_DO_DOCUMENT_INTELLIGENCE_AQUI"
+key = "SUA_CHAVE_DO_DOCUMENT_INTELLIGENCE_AQUI"
+
+
+# URL de um documento de teste (Ex: um arquivo .jpg, .png ou .pdf em um Blob Storage)
+document_url = "URL_DO_SEU_DOCUMENTO_PARA_ANALISE_AQUI" 
+
+# O modelo pré-construído para IDs (Documentos de Identidade)
+model_id = "prebuilt-idDocument"
+
+# ====================================================================
+# FUNÇÃO PRINCIPAL
+# ====================================================================
+
+def analisar_documento_para_antifraude():
+    print("Iniciando a análise do documento para extração de dados...")
+    
+    # 1. Autenticação e Criação do Cliente
+    document_intelligence_client = DocumentIntelligenceClient(
+        endpoint=endpoint, 
+        credential=AzureKeyCredential(key)
+    )
+
+    # 2. Iniciar Análise Assíncrona
+    # Enviamos a URL do documento para o modelo prebuilt-idDocument
+    poller = document_intelligence_client.begin_analyze_document(
+        model_id=model_id,
+        analyze_document_request=AnalyzeDocumentRequest(url_source=document_url),
+    )
+    
+    print("Aguardando o resultado da análise...")
+    
+    # 3. Obter o Resultado
+    result = poller.result()
+    
+    print("--- Resultado da Análise de Documento ---")
+
+    if result.documents:
+        # Pega o primeiro documento processado
+        doc = result.documents[0]
+        
+        # O Document Intelligence extrai campos e o score de confiança para cada campo
+        fields = doc.fields
+        
+        # Dicionário para armazenar os dados extraídos
+        dados_extraidos = {}
+        
+        # Mapeamento de campos relevantes para verificação
+        campos_para_verificar = [
+            "FirstName", 
+            "LastName", 
+            "DocumentNumber", 
+            "DateOfBirth", 
+            "ExpirationDate",
+            "CountryRegion"
+        ]
+
+        # Extrair e exibir os dados e o score de confiança
+        print(f"Tipo de Documento Detectado: {doc.doc_type}")
+        print("-" * 50)
+        
+        # 4. Implementação da Lógica "Anti-Fraude" (Parte 1: Extração e Confiança)
+        
+        # Variável para sinalizar suspeita
+        fraude_suspeita = False
+        
+        for campo in campos_para_verificar:
+            field_data = fields.get(campo)
+            if field_data:
+                confidence = field_data.confidence * 100
+                valor = field_data.value if hasattr(field_data, 'value') else field_data.content
+                dados_extraidos[campo] = str(valor)
+                
+                print(f"Campo: {campo}")
+                print(f"  Valor Extraído: {valor}")
+                print(f"  Score de Confiança: {confidence:.2f}%")
+                
+              
+                if confidence < 90.0:
+                    fraude_suspeita = True
+                    print(f"  *** ALERTA DE BAIXA CONFIANÇA! Score abaixo de 90%. ***")
+
+        print("-" * 50)
+        
+    
+        if fraude_suspeita:
+            print("STATUS GERAL: 🚨 REVISÃO NECESSÁRIA (Baixo score de confiança em algum campo).")
+        else:
+            print("STATUS GERAL: ✅ EXTRAÇÃO DE DADOS BEM-SUCEDIDA (Altos scores de confiança).")
+
+        if "DocumentNumber" in dados_extraidos and len(dados_extraidos["DocumentNumber"]) < 5:
+            print("STATUS DE CONSISTÊNCIA: ⚠️ Número do Documento parece muito curto/inválido.")
+
+    else:
+        print("Nenhum documento detectado no arquivo fornecido.")
+
+if __name__ == "__main__":
+    if "SEU_ENDPOINT_DO_DOCUMENT_INTELLIGENCE_AQUI" in endpoint or "SUA_CHAVE_DO_DOCUMENT_INTELLIGENCE_AQUI" in key or "URL_DO_SEU_DOCUMENTO_PARA_ANALISE_AQUI" in document_url:
+        print("ERRO DE CONFIGURAÇÃO: Por favor, substitua 'endpoint', 'key' e 'document_url' com seus valores reais do Azure.")
+    else:
+        analisar_documento_para_antifraude()
